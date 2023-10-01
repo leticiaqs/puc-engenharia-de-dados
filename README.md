@@ -32,7 +32,7 @@ Uma vez que a maior parte dos dados já se encontram no BigQuery, o caminho mais
 Nesse caso trabalharemos com alguns arquivos cuja fonte disponibiliza os dados em formato .csv e também tabelas de elaboração própria, resultantes de outros estudos previamente realizados.
 
 Para a coleta dos dados, além do download realizado diretamente no site e separação dos arquivos próprios, os dados "brutos" em formato .csv foram armazenados em um *bucket* criado no Google Cloud Storage (GCS) para posterior trabalho de ETL.
-![arquivos no bucket](prints\load_arquivos_bucket.png)
+![arquivos no bucket](prints/load_arquivos_bucket.png)
 
 #### 2) Coleta a partir do Big Query
 Para os dados disponíveis no Big Query o procedimento de coleta foi feito utilizando a ferramenta *Big Query Execute*, dentro do Google Data Fusion. Assim, através de queries SQL, foram criadas tabelas com os dados "raw" em um dataset dentro do Big Query próprio. 
@@ -74,12 +74,12 @@ WHERE data >= '2023-01-06'
 ```
 Devido à limitações do Data Fusion, as duas queries foram adicionadas no mesmo campo, para que a carga dos dois datasets pudesse ser feita de uma só vez.
 
-![carga utilizando o data fusion](prints\carga-datario_BQ.png)
+![carga utilizando o data fusion](prints/carga-datario_BQ.png)
 
 ## MODELAGEM
 Para o resultado e análises pretendidas, foi feita a opção por um banco de dados relacional, com um esquema *snowflake*. O esquema é então composto por seis tabelas, sendo uma tabela fato, três dimensões principais - incluindo uma dimensão tempo (tabela dia) - e duas tabelas com dados que se relacionam à dimensão consorcio-empresa.  
 
-![esquema snowflake genMyModel](prints\esquema_modelagem.png)
+![esquema snowflake genMyModel](prints/esquema_modelagem.png)
 
 - Na tabela fato (viagens_dia), cada entrada corresponde à operação de uma linha de ônibus, por empresa operadora, na data registrada. Ela contém ainda outros dados importantes como a quilometragem total registrada nessa operação e dados relacionados com outras tabelas.
 
@@ -99,51 +99,51 @@ Assim, as tabelas foram construídas conforme os procedimentos descritos a segui
 #### *1) Tabelas empresa_consorcio, empresa e consorcio*  
 As tabelas empresa_consorcio e consorcio foram compostas a partir do pipeline representado abaixo:
 
-![pipeline tabelas empresa_consorcio e consorcio](prints\pipeline_tabelas_empresa-consorcio.png)
+![pipeline tabelas empresa_consorcio e consorcio](prints/pipeline_tabelas_empresa-consorcio.png)
 
 Com as informações contidas no dataset raw, as tabelas foram construídas a partir de operações group by, para identificar as entradas únicas e agregar os atributos desejados em cada uma. Após selecionadas as informações desejadas para a versão final de cada tabela, os dados foram sincronizados no dataset final do projeto no Big Query.
 
 Já para a tabela empresa, foram necessárias algumas transformações adicionais, além da combinação entre fontes de dados no Big Query e dados no bucket do GCS, conforme pode ser visto no pipeline:
 
-![pipeline tabela empresa](prints\pipeline_tabela_empresa.png)
+![pipeline tabela empresa](prints/pipeline_tabela_empresa.png)
 Com os dados da tabela raw viagem_onibus, são feitas duas operações de group by, uma para determinar o número de carros por empresa  e outra para determinar o número de linhas por empresa. O nome das empresas é identificado a partir do .csv de elaboração própria originalmente armazenado no bucket, que passa apenas por uma mudança de datatype (utilizando o wrangler). As duas informações são então unidas por meio da ferramenta "Joiner", gerando então a tabela final que é sincronizada no dataset do Big Query. 
 
 #### *2) Tabela linhas_onibus*
 A construção da tabela referente as linhas de ônibus foi composta de duas etapas de transformação. Na primeira, utilizando dados diretamente da tabela raw que contém as linhas planejadas por dia pela Prefeitura. Foi então utilizada o "Wrangler" para a inclusão de uma coluna com o valor calculado para o subsidio em cada viagem e em seguida aplicada a operação de "Deduplicate", dado que na tabela original diversas linhas se repetem em mais de um dia. Foi feito ainda um "Group By" para a agregação por linha de ônibus e dia da semana, já que no dado fonte as linhas estavam separadas em trajeto de ida e volta. Ao final, foi feita a carga da tabela resultante em um dataset temporário no Big Query.
-![pipeline tabela linhas](prints\pipeline_tabela_linhas_onibus.png)
+![pipeline tabela linhas](prints/pipeline_tabela_linhas_onibus.png)
 
 Na segunda etapa, foram feitas novas transformações utilizando a ferramenta wrangler, tomando como fonte a tabela do dataset temporário criada anteriormente. Nesse ponto, foram ajustados os *datatypes* dos atributos para os tipos desejados, além de criar a coluna id_linha, como um código formado a partir da combinação entre o serviço(nº da linha) e o tipo de dia da semana(sabado, domingo ou dia útil). Foi ainda criada a coluna de "viagens_planejadas_dia" a partir do dado da quilometragem total esperada para a linha em um dia.
-![wrangle2 tabela linhas](prints\wrangle_final_tabela_linhas_onibus.png)
+![wrangle2 tabela linhas](prints/wrangle_final_tabela_linhas_onibus.png)
 
 Após essas transformações, foi feita novamente uma operação de "Deduplicate", visto que algumas linhas de onibus ainda se repetiam, guardando apenas pequenas diferenças no número de viagens planejadas por dia. Com isso, optou-se como critério para a seleção, guardar aquelas que apresentassem o maior número de viagens planejadas. Após esse procedimento, a tabela foi então sincronizada na base de dados final (dataset onibus_subsidio_rj).
-![pipeline2 tabela linhas](prints\succeeded_pipeline2_linhas_onibus.png)
+![pipeline2 tabela linhas](prints/succeeded_pipeline2_linhas_onibus.png)
 
 #### *3) Tabela viagens_dia*
 No caso desta tabela que corresponde à tabela fato do esquema projetado, também foi necessário realizar as transformações em duas etapas. Na primeira, são feitos dois caminhos de transformações que são unidos ao final, tendo como fonte a tabela raw extraída do database da Prefeitura. Um dos caminhos é feito para a inclusão do valor calculado para o subsídio de cada viagem - a nova coluna foi criada no "Wragler", com a informação do valor pago por km (R$3,80) determinado em decreto municipal. Nos dois caminhos, foi feita a agregação por "Group By" das viagens por dia, unindo as informações por "Join" de forma que a tabela resultante tivesse suas entradas únicas por dia, empresa e linha. Esses dados foram então armazenados no dataset temporário para depois proceder a outras transformações.
-![pipeline1 tabela viagens_dia](prints\succeeded_pipeline_tabela_viagens_dia.png)  
+![pipeline1 tabela viagens_dia](prints/succeeded_pipeline_tabela_viagens_dia.png)  
 
 Na segunda etapa, foram apenas realizados ajustes nos nomes das colunas e *datatypes*, além da substituição das informações de tipo de dia da semana e serviço operado pelo id_linha, composto da mesma maneira que os códigos da tabela linhas_onibus.
-![wrangle2 tabela viagens_dia](prints\wrangle_final_tabela_viagens_dia.png)
+![wrangle2 tabela viagens_dia](prints/wrangle_final_tabela_viagens_dia.png)
 
 Assim, o pipeline resultante desse processamento é composto das seguintes etapas: extração dos dados da tabela de viagens no dataset temporário, transformações das colunas no "Wrangler" e carga da tabela resultante no dataset final no Big Query.
-![pipeline2 tabela viagens_dia](prints\succeeded_pipeline2_viagens_dia.png)
+![pipeline2 tabela viagens_dia](prints/succeeded_pipeline2_viagens_dia.png)
 
 #### *4) Tabela dia*
 Para a construção da dimensão temporal do esquema projetado, foi utilizada a tabela de viagens_dia do dataset temporário, considerando que as viagens já estariam agregadas por dia-linha-empresa, reduzindo o volume de dados para o processamento em comparação à tabela raw com os dados originais.
 Foram utilizadas apenas as colunas data e tipo_dia e, através da ferramenta wrangler foram acrescidas as colunas de mes e ano, partindo da separação dos dados contidos na coluna data.
-![wrangle tabela dia](prints\wrangle_tabela_dia.png)
+![wrangle tabela dia](prints/wrangle_tabela_dia.png)
 
 Após esse processamento, foi utilizado o "Deduplicate" para a seleção de entradas únicas de data. O pipeline resultante ficou então com quatro etapas, contando com a carga da tabela no dataset final do projeto no Big Query.
-![pipeline tabela dia](prints\succeeded_pipeline_dia.png)
+![pipeline tabela dia](prints/succeeded_pipeline_dia.png)
 
 #### *Resultado final*
 Após a execução dos procedimentos relatados, obteve-se o banco de dados composto das seis tabelas, conforme o esquema projetado. Apesar de não contar com as relações e restrições inicialmente desejadas, o banco pode ser utilizado com certa confiabilidade nas análises.
-![resultado final no big query](prints\bigquery_final.png)
+![resultado final no big query](prints/bigquery_final.png)
 
 ### LINHAGEM DOS DADOS
 
 A linhagem dos dados registra então os caminhos dos dados contidos no dataset final, permitindo rastrear possíveis erros que venham a ser identificados e garantir a qualidade dos dados. A linhagem foi então documentada no seguinte diagrama:
-![linhagem dos dados](prints\data_lineage.jpg)
+![linhagem dos dados](prints/data_lineage.jpg)
 Os processos documentados no diagrama podem ser de 5 tipos:
 
   - copia: é realizada uma cópia idêntica, integral ou parcial, sem qualquer transformação nos dados.
@@ -168,7 +168,7 @@ Uma vez estabelecido o DW e organizados os dados nas tabelas, é possível entã
 ### QUALIDADE DOS DADOS
 É fundamental destacar que frequentemente os dados não se encontram disponíveis da forma adequada e clara, gerando não somente a necessidade de limpeza, mas também que seja assegurada a qualidade e confiabilidade do dado que será utilizado para apoiar a tomada de decisão. No caso do banco de dados elaborado, um aspecto relevante são os dados nulos. Especialmente no caso da tabela empresa que, por ter sido formulada a partir de fontes diversas, exigindo um cuidado maior no seu tratamento, ainda assim com um grande volume de entradas "null". O que se percebeu neste ponto foi que o dado original da Prefeitura utiliza uma codificação para o id_empresa, o que acaba gerando identificadores diferentes para um mesmo operador e prejudicando, portanto, as agregações que dependem dessa informação. Com o problema vindo da fonte, fica ainda mais difícil encontrar soluções para a qualidade desses dados.
 
-![entradas null tabela empresa](prints\dados_nulos_empresa.png)
+![entradas null tabela empresa](prints/dados_nulos_empresa.png)
 
 Essa questão é ainda complementada com a impossibilidade de incluir *constrains* no formato em que é construído o banco de dados no Big Query. Com isso, o banco pode acabar permitindo dados que violam sua característica desejada. No entanto, ao determinarmos o *datatype* de cada coluna, essa questão pode ser em parte minimizada.
 
@@ -198,7 +198,7 @@ FROM nulos
 WHERE nulos.linhas_l
 ```
 Com o resultados percebemos que há um problema de qualidade, uma vez que encontramos muitas códigos sem correspondência entre as duas tabelas:
-![resultado query correspondencia ids](prints\resultado_qualidade.png)
+![resultado query correspondencia ids](prints/resultado_qualidade.png)
 
 Para garantir então a qualidade desses dados, seria necessário realizar uma etapa adicional no tratamento, garantindo a relação entre as fontes de dados ou utilizando a mesma fonte para a composição das duas tabelas.
 
@@ -225,7 +225,7 @@ GROUP BY viagens.id_empresa,empresa.nome_empresa
 ORDER BY media_viagens DESC
 ```
 O resultado traz então a relação entre os ids das empresas, seus respectivos nomes (quando identificados) e o total de viagens realizadas por cada uma em dias uteis.
-![print resultado_Q1](prints\resultado_viagens_diasuteis.png)
+![print resultado_Q1](prints/resultado_viagens_diasuteis.png)
 
 Apesar de ser possível obter a resposta desejada, o problema de qualidade dos dados relativo ao nome das empresas e aos respectivos ids põe em dúvida a sua confiabilidade. Se fosse possível ter todas as correspondências exatas, talvez a ordenação dos resultados se desse de outra forma, pois provavelmente averiam mais agregações.
 
@@ -241,7 +241,7 @@ FROM `data-science-puc.onibus_subisidio_rj.empresa`
 ORDER BY media_carrosporlinha DESC
 ```
 Nesse caso também, mesmo tendo sido obtida resposta à pergunta realizada, o problema referente a qualidade dos dados na tabela empresa nos id's mais uma vez põe em dúvida dos resultados obtidos.
-![print resultado_Q2](prints\resultado_media_carrosporlinha.png)
+![print resultado_Q2](prints/resultado_media_carrosporlinha.png)
 
 Nessas duas primeiras perguntas, o objetivo era compreender melhor um dos assuntos frequentemente questionados pela população em relação ao sistema de ônibus e, principalmente, reivindicado pelas empresas. Quando se fala do sucateamento das linhas de ônibus, pouco é comentado a respeito da sobrecarga dos carros. Dessa forma, como análise exploratória, foi possível ter referência sobre a demanda média dos carros de cada empresa, além do volume de viagens imposto sobre cada uma.
 
@@ -283,7 +283,7 @@ JOIN km_consorcio AS kc ON kc.consorcio = kec.consorcio
 ORDER BY percentual_km DESC
 ```
 Os resultados dessa consulta revelam como se dá a participação de cada empresa nos consórcios, sendo um elemento importante para uma solução mais justa na divisão interna do subsídio pago pela Prefeitura a cada consórcio.
-![print resultado_Q3](prints\resultado_percentualnoconsorcio.png)
+![print resultado_Q3](prints/resultado_percentualnoconsorcio.png)
 
 Embora tenha sido obtida a resposta para o questionamento realizado, a leitura desta informação poderia ser bastante facilitada por meio da exibição de um gráfico que representasse essa participação de cada empresa nos consórcios.
 
@@ -305,7 +305,7 @@ GROUP BY id_empresa
 ORDER BY max_inconformidades DESC
 ```
 Apesar de não ter sido possível obter a resposta exatamente como desejado, o resultado obtido já traz um pouco da exploração que se buscava obter. Com isso, já se pode por exemplo, perceber quais empresas têm tido dificuldades de cumprir as regras para o pagamento subsídio com maior frequência.
-![print resultado_Q4](prints\resultado_inconformidades_porempresa.png)
+![print resultado_Q4](prints/resultado_inconformidades_porempresa.png)
 
 Pelo fato de termos muitas entradas nulas para o nome das empresas correspondentes aos ids, nesse caso utilizamos apenas as informações da tabela viagens_dia. Todavia, seria possível acrescentar o nome das empresas realizando o mesmo procedimento de "join" feito nas questões anteriores.
 
@@ -319,7 +319,7 @@ FROM `data-science-puc.onibus_subisidio_rj.viagens_dia`
 ```
 Os resultados obtidos confirmaram a hipótese levantada, revelando também que a principal regra do subsídio violada - entre a realização do trajeto conforme a rota planejada e a transmissão do gps ao longo da rota - é a questão da qualidade da transmissão do gps. Essa informação é bastante relevante para essa análise exploratória, pois ajuda a direcionar as melhorias nas empresas para a obtenção do subsídio.
 
-![print resultado_Q5](prints\resultado_inconformidades_portipo.png)
+![print resultado_Q5](prints/resultado_inconformidades_portipo.png)
 
 Uma vez que a resposta à pergunta trouxe um resultado bastante inesperado, visto que não havia nenhuma viagem inconforme por um dos critérios empregados, levantou-se a dúvida quanto à qualidade dos dados e, principalmente se alguma das transformações realizadas teria causado a perda da informação original. Assim, para conferência os dados do Big Query da Prefeitura foram consultados para a mesma questão e confirmou-se o mesmo resultado.
 
