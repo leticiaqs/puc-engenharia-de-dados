@@ -160,7 +160,7 @@ O registro da linhagem nesse caso foi elaborado por meio da ferramenta para diag
 No caso do registro da linhagem disponibilizado pelo próprio Big Query, o que se percebeu foi a falta de conexão imediata com o Data Fusion - onde foram feitas as transformações, não carregando automaticamente o processo, apesar da aba "lineage". Além disso, seria necessário habilitar a ferramenta Dataplex, para a realização das tarefas relacionadas à governança. Com isso, entendendo que tais ferramentas envolvem certo grau de complexidade, podendo ainda gerar custos adicionais e que os dados estão em um ambiente multiusuário, a execução manual desses procedimentos foi a via adotada. 
 
 ### CATÁLOGO DOS DADOS
-Da mesma forma, o catálogo de dados também poderia ser construído por meio da ferramenta "Dataplex" e "Data Catalog" do Google, específica para a elaboração de catálogos. No entanto, conforme os argumentos já explicitados, o catálogo também foi documentado de forma manual em excel gerando um conjunto de tabelas de metadados. Esse conjunto está também disponível [nesse link](https://www.xxxx).
+Da mesma forma, o catálogo de dados também poderia ser construído por meio da ferramenta "Dataplex" e "Data Catalog" do Google, específica para a elaboração de catálogos. No entanto, conforme os argumentos já explicitados, o catálogo também foi documentado de forma manual no gsheets, gerando um conjunto de tabelas de metadados. Esse conjunto está disponível [nesse link](https://docs.google.com/spreadsheets/d/1fKyaPjYRsuZfyKzKuCcVMLIHJo4TikY-diTdi6_Qfq0/edit?usp=sharing).
 
 ## ANÁLISES
 Uma vez estabelecido o DW e organizados os dados nas tabelas, é possível então passar à utilização dos mesmos para extrair as informações e análises desejadas. Com isso, é possível responder às perguntas iniciais que motivaram esse estudo, além de propiciar outros entendimentos sobre o sistema de ônibus.
@@ -320,6 +320,7 @@ FROM `data-science-puc.onibus_subisidio_rj.viagens_dia`
 Os resultados obtidos confirmaram a hipótese levantada, revelando também que a principal regra do subsídio violada - entre a realização do trajeto conforme a rota planejada e a transmissão do gps ao longo da rota - é a questão da qualidade da transmissão do gps. Essa informação é bastante relevante para essa análise exploratória, pois ajuda a direcionar as melhorias nas empresas para a obtenção do subsídio.
 
 ![print resultado_Q5](prints\resultado_inconformidades_portipo.png)
+
 Uma vez que a resposta à pergunta trouxe um resultado bastante inesperado, visto que não havia nenhuma viagem inconforme por um dos critérios empregados, levantou-se a dúvida quanto à qualidade dos dados e, principalmente se alguma das transformações realizadas teria causado a perda da informação original. Assim, para conferência os dados do Big Query da Prefeitura foram consultados para a mesma questão e confirmou-se o mesmo resultado.
 
 
