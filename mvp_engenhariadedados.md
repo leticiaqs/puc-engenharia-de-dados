@@ -157,11 +157,10 @@ Os processos documentados no diagrama podem ser de 5 tipos:
   - adiciona coluna: nesse caso apenas é adicionada uma informação nova sem agregações ou transformações.
 
 O registro da linhagem nesse caso foi elaborado por meio da ferramenta para diagramas "miro", uma vez que se trata de um esquema simples e, no caso, todo o processamento e uso da base está sendo realizado por um usuário único (por isso não houve também necessidade de indicação do agente nas tarefas executadas). Existem porém, outras formas de documentação, incluindo mecanismos que geram a linhagem dos dados automaticamente a partir dos processos realizados.   
-No caso do registro da linhagem disponibilizado pelo próprio Big Query, o que se percebeu foi a falta de conexão com o Data Fusion - onde foram feitas as transformações, demorando ainda para carregar as atualizações. Além disso, seria necessário habilitar a ferramenta Dataplex, o que na situação em questão, começaria a estourar a cota gratuita na conta Google utilizada.
+No caso do registro da linhagem disponibilizado pelo próprio Big Query, o que se percebeu foi a falta de conexão imediata com o Data Fusion - onde foram feitas as transformações, não carregando automaticamente o processo, apesar da aba "lineage". Além disso, seria necessário habilitar a ferramenta Dataplex, para a realização das tarefas relacionadas à governança. Com isso, entendendo que tais ferramentas envolvem certo grau de complexidade, podendo ainda gerar custos adicionais e que os dados estão em um ambiente multiusuário, a execução manual desses procedimentos foi a via adotada. 
 
 ### CATÁLOGO DOS DADOS
-Da mesma forma, o catálogo de dados também poderia ser construído por meio da ferramenta "Dataplex" e "Data Catalog" do Google, específica para trabalhar questões relacionadas à governança de dados. No entanto, devido à limitação já mencionada para o uso das ferramentas do Google Cloud, optou-se por documentar o catálogo de forma manual em excel gerando um conjunto de tabelas de metadados. Esse conjunto foi documentado na pasta catalogo [nesse github](https://www.xxxx).
-
+Da mesma forma, o catálogo de dados também poderia ser construído por meio da ferramenta "Dataplex" e "Data Catalog" do Google, específica para a elaboração de catálogos. No entanto, conforme os argumentos já explicitados, o catálogo também foi documentado de forma manual em excel gerando um conjunto de tabelas de metadados. Esse conjunto está também disponível [nesse link](https://www.xxxx).
 
 ## ANÁLISES
 Uma vez estabelecido o DW e organizados os dados nas tabelas, é possível então passar à utilização dos mesmos para extrair as informações e análises desejadas. Com isso, é possível responder às perguntas iniciais que motivaram esse estudo, além de propiciar outros entendimentos sobre o sistema de ônibus.
@@ -173,6 +172,8 @@ Uma vez estabelecido o DW e organizados os dados nas tabelas, é possível entã
 
 Essa questão é ainda complementada com a impossibilidade de incluir *constrains* no formato em que é construído o banco de dados no Big Query. Com isso, o banco pode acabar permitindo dados que violam sua característica desejada. No entanto, ao determinarmos o *datatype* de cada coluna, essa questão pode ser em parte minimizada.
 
+Por outro lado, é preciso considerar informações imprecisas na fonte de dados, a exemplo da classificação das datas por dia útil, sabado ou domingo. Embora a classificação tenha um sentido próprio no sistema de subsídio, ela gera também outras dúvidas. Não só por fugir da tradicional identificação por dia da semana (o que poderia ser recuperado a partir da data registrada das viagens), a própria classificação utilizada gera questões como, por exemplo, qual seria a classificação atribuída aos feriados. Para isso, seria necessário verificar a identificação fazendo uma consulta para um dia de feriado conhecido no período correspondente aos dados do banco.
+
 Outro ponto importante em relação à qualidade, está também relacionado à impossibilidade de estabelecer relacionamentos diretos entre as tabelas, por meio de chaves primárias ou estrangeiras. No caso trabalhado, um exemplo que peca contra a qualidade dos dados nesse sentido é a definição do id_linhas, presente na tabela de viagens_dia e na tabela linhas_onibus. Apesar da intenção na modelagem ter sido de um relacionamento (foreign key e primary key respectivamente), nas etapas de transformação os códigos foram gerados a partir do mesmo procedimento porém empregado em fontes diferentes. Dessa forma, torna-se mais difícil garantir a sua correspondência e evitar divergências na informação, podendo ser encontrados id's em uma tabela (em que preocupa mais os encontrados na tabela viagens_dia) sem equivalência de dados na outra, ou até mesmo com informações conflitantes. Essa questão foi avaliada por meio da seguinte query:
 
 ```SQL
@@ -182,7 +183,7 @@ SELECT
   l.id_linha IS NULL AS linhas_l,
 FROM `data-science-puc.onibus_subisidio_rj.viagens_dia` AS v
 FULL OUTER JOIN `data-science-puc.onibus_subisidio_rj.linhas_onibus` AS l
-ON v.id_linha = l.id_linha
+  ON v.id_linha = l.id_linha
 )
 SELECT
   "viagens_dia" AS nulos,
@@ -204,8 +205,11 @@ Para garantir então a qualidade desses dados, seria necessário realizar uma et
 Apesar disso, pelo fato das perguntas iniciais não focarem nas linhas operadas, é possível ainda assim prosseguir com a análise inicialmente proposta no problema.
 
 ### RESPOSTAS ÀS QUESTÕES INICIAIS
-- Quantas viagens são feitas em média, em dias úteis, por cada empresa?
+Considerando então as perguntas que motivaram este trabalho, a partir do banco de dados estabelecido, tentaremos responder ao problema inicial proposto. A seguir retomamos as questões colocadas:
 
+#### - Quantas viagens são feitas em média, em dias úteis, por cada empresa?
+
+Para responder a essa pergunta, empregamos então a seguinte query, na qual são utilizados os dados de três das tabelas do banco: viagens_dia, empresa e dia:
 ```SQL
 SELECT 
   viagens.id_empresa,
@@ -213,15 +217,21 @@ SELECT
   AVG(viagens.total_viagens) AS media_viagens,
 FROM `data-science-puc.onibus_subisidio_rj.viagens_dia` AS viagens
 LEFT OUTER JOIN `data-science-puc.onibus_subisidio_rj.empresa` AS empresa 
-ON viagens.id_empresa = empresa.id_empresa
-JOIN `data-science-puc.onibus_subisidio_rj.dia` AS dia ON
-viagens.data = dia.data
+  ON viagens.id_empresa = empresa.id_empresa
+JOIN `data-science-puc.onibus_subisidio_rj.dia` AS dia 
+  ON viagens.data = dia.data
 WHERE dia_semana = 'Dia Útil'
 GROUP BY viagens.id_empresa,empresa.nome_empresa
 ORDER BY media_viagens DESC
 ```
-- Qual a relação média de veículos por linha operada em cada empresa?
+O resultado traz então a relação entre os ids das empresas, seus respectivos nomes (quando identificados) e o total de viagens realizadas por cada uma em dias uteis.
+![print resultado_Q1](prints\resultado_viagens_diasuteis.png)
 
+Apesar de ser possível obter a resposta desejada, o problema de qualidade dos dados relativo ao nome das empresas e aos respectivos ids põe em dúvida a sua confiabilidade. Se fosse possível ter todas as correspondências exatas, talvez a ordenação dos resultados se desse de outra forma, pois provavelmente averiam mais agregações.
+
+#### - Qual a relação média de veículos por linha operada em cada empresa?
+
+Para a resposta dessa pergunta, bastou a utilização da tabela empresa, uma vez que todos os dados necessários já se encontravam agregados na mesma.
 ```SQL
 SELECT 
   id_empresa,
@@ -230,8 +240,14 @@ SELECT
 FROM `data-science-puc.onibus_subisidio_rj.empresa`
 ORDER BY media_carrosporlinha DESC
 ```
-- Qual o percentual de quilômetros rodados por cada empresa em cada consórcio nos últimos 6 meses de dados disponíveis?
+Nesse caso também, mesmo tendo sido obtida resposta à pergunta realizada, o problema referente a qualidade dos dados na tabela empresa nos id's mais uma vez põe em dúvida dos resultados obtidos.
+![print resultado_Q2](prints\resultado_media_carrosporlinha.png)
 
+Nessas duas primeiras perguntas, o objetivo era compreender melhor um dos assuntos frequentemente questionados pela população em relação ao sistema de ônibus e, principalmente, reivindicado pelas empresas. Quando se fala do sucateamento das linhas de ônibus, pouco é comentado a respeito da sobrecarga dos carros. Dessa forma, como análise exploratória, foi possível ter referência sobre a demanda média dos carros de cada empresa, além do volume de viagens imposto sobre cada uma.
+
+#### - Qual o percentual de quilômetros rodados por cada empresa em cada consórcio nos últimos 6 meses de dados disponíveis?
+
+Essa pergunta exigiu queries mais complexas para a resposta, pois envolveu diferentes agregações de dados, embora quase todos extraídos da mesma tabela (viagens_dia). Assim, foi feito somente o "join" com a tabela empresa para mais uma vez buscar identificá-las nominalmente.
 ```SQL
 WITH data_inicial AS (
   SELECT
@@ -264,9 +280,15 @@ FROM km_empresa_consorcio AS kec
 JOIN `data-science-puc.onibus_subisidio_rj.empresa` AS e
   ON kec.id_empresa = e.id_empresa
 JOIN km_consorcio AS kc ON kc.consorcio = kec.consorcio
+ORDER BY percentual_km DESC
 ```
-- Qual empresa apresentou menor percentual de viagens não subsidiadas (com informidades) no último mês de dados disponíveis?
-[RESPONDI DE OUTRA FORMA!!]
+Os resultados dessa consulta revelam como se dá a participação de cada empresa nos consórcios, sendo um elemento importante para uma solução mais justa na divisão interna do subsídio pago pela Prefeitura a cada consórcio.
+![print resultado_Q3](prints\resultado_percentualnoconsorcio.png)
+
+Embora tenha sido obtida a resposta para o questionamento realizado, a leitura desta informação poderia ser bastante facilitada por meio da exibição de um gráfico que representasse essa participação de cada empresa nos consórcios.
+
+#### - Qual empresa apresentou menor percentual de viagens não subsidiadas (com informidades) no último mês de dados disponíveis?
+No caso dessa questão, a agregação inicial das viagens por dia faz perder a precisão na informação quanto ao número de viagens inconformes. Isto é, devido ao fato de que uma viagem pode deixar de ser subsidiada por uma regra de inconformidade OU outra - o que significa poder ser invalidada também pelos dois motivos ao mesmo tempo - uma vez que o dado é agregado por dia, não há como saber o número exato de viagens não válidas para o pagamento. Com isso, para chegar a uma resposta que se aproximasse do desejado, trabalhamos com os mínimos e máximos possíveis de viagens inconformes por empresa, tendo como referência que o máximo possível não poderia ultrapassar o total de viagens realizadas em um único dia.
 ```SQL
 WITH data_inicial AS (
   SELECT
@@ -282,13 +304,27 @@ WHERE data >= (SELECT inicio FROM data_inicial)
 GROUP BY id_empresa
 ORDER BY max_inconformidades DESC
 ```
+Apesar de não ter sido possível obter a resposta exatamente como desejado, o resultado obtido já traz um pouco da exploração que se buscava obter. Com isso, já se pode por exemplo, perceber quais empresas têm tido dificuldades de cumprir as regras para o pagamento subsídio com maior frequência.
+![print resultado_Q4](prints\resultado_inconformidades_porempresa.png)
 
-- Qual a regra para o subsídio tem maior percentual de violação em cada empresa?
-[RESPONDER GPS_ a OUTRA REGRA É ZERO!]
+Pelo fato de termos muitas entradas nulas para o nome das empresas correspondentes aos ids, nesse caso utilizamos apenas as informações da tabela viagens_dia. Todavia, seria possível acrescentar o nome das empresas realizando o mesmo procedimento de "join" feito nas questões anteriores.
+
+#### - Qual a regra para o subsídio tem maior percentual de violação em cada empresa?
+Ao responder à questão anterior, o resultado já levanta um questionamento relacionado à informação que se deseja obter agora, já que os máximos e mínimos de inconformidades possíveis apresentaram valores iguais. Assim, uma primeira suposição foi de que, para uma das duas regras, a quantidade de viagens inconformes seria zero para todas as empresas. Ou seja, nenhuma empresa estaria violanto tal regra de conformidade para o pagamento do subsídio no período dos dados coletados. Para a confirmação dessa hipótese e identificação da regra atendida por todos, empregou-se a seguinte query:
 ```SQL
-SELECT 
-FROM 
+SELECT
+  SUM(viagens_inconformes_shp) AS inconformidades_shp, 
+  SUM(viagens_inconformes_gps) AS inconformidades_gps,
+FROM `data-science-puc.onibus_subisidio_rj.viagens_dia`
 ```
+Os resultados obtidos confirmaram a hipótese levantada, revelando também que a principal regra do subsídio violada - entre a realização do trajeto conforme a rota planejada e a transmissão do gps ao longo da rota - é a questão da qualidade da transmissão do gps. Essa informação é bastante relevante para essa análise exploratória, pois ajuda a direcionar as melhorias nas empresas para a obtenção do subsídio.
+
+![print resultado_Q5](prints\resultado_inconformidades_portipo.png)
+Uma vez que a resposta à pergunta trouxe um resultado bastante inesperado, visto que não havia nenhuma viagem inconforme por um dos critérios empregados, levantou-se a dúvida quanto à qualidade dos dados e, principalmente se alguma das transformações realizadas teria causado a perda da informação original. Assim, para conferência os dados do Big Query da Prefeitura foram consultados para a mesma questão e confirmou-se o mesmo resultado.
+
+
+Embora nem todas as perguntas tenham sido respondidas exatamente como inicialmente propostas, o banco de dados elaborado atendeu aos objetivos de uma análise em caráter mais exploratório do sistema de ônibus e do respectivo subsídio. Ainda assim, outras perguntas poderiam contribuir para aprofundar esse entendimento, a exemplo das questões envolvendo a terceira regra do subsídio, que diz respeito a realização de 80% das viagens planejadas para cada dia. Além disso, com o auxílio de ferramentas como o Looker Studio (dentro da própria Google Cloud), Power BI ou Tableau, poderiam ainda acelerar a análise, explorando visualmente outras questões.
+
 ## AUTO AVALIAÇÃO
 Após a realização das análises é possível perceber alguns aspectos importantes do processo especialmente visando sua melhoria para trabalhos futuros. 
 
