@@ -167,18 +167,41 @@ Da mesma forma, o catálogo de dados também poderia ser construído por meio da
 Uma vez estabelecido o DW e organizados os dados nas tabelas, é possível então passar à utilização dos mesmos para extrair as informações e análises desejadas. Com isso, é possível responder às perguntas iniciais que motivaram esse estudo, além de propiciar outros entendimentos sobre o sistema de ônibus.
 
 ### QUALIDADE DOS DADOS
-É fundamental destacar que frequentemente os dados não se encontram disponíveis da forma adequada e clara, gerando não somente a necessidade de limpeza, mas também que seja assegurada a qualidade e confiabilidade do dado que será utilizado para apoiar a tomada de decisão.
+É fundamental destacar que frequentemente os dados não se encontram disponíveis da forma adequada e clara, gerando não somente a necessidade de limpeza, mas também que seja assegurada a qualidade e confiabilidade do dado que será utilizado para apoiar a tomada de decisão. No caso do banco de dados elaborado, um aspecto relevante são os dados nulos. Especialmente no caso da tabela empresa que, por ter sido formulada a partir de fontes diversas, exigindo um cuidado maior no seu tratamento, ainda assim com um grande volume de entradas "null". O que se percebeu neste ponto foi que o dado original da Prefeitura utiliza uma codificação para o id_empresa, o que acaba gerando identificadores diferentes para um mesmo operador e prejudicando, portanto, as agregações que dependem dessa informação. Com o problema vindo da fonte, fica ainda mais difícil encontrar soluções para a qualidade desses dados.
 
-No caso do banco de dados elaborado, um aspecto relevante são as entradas vazias. A exemplo da tabela empresa_consorcio que, por ter sido formulada a partir de fontes bastante diversas, com notações diferentes - no nome das empresas ou da respectiva codificação - exigiu um cuidado maior no seu tratamento, ainda assim com um grande volume de entradas "null", que impedem algumas análises de maior precisão.
+![entradas null tabela empresa](prints\dados_nulos_empresa.png)
 
-[print das entradas null como resultado da query SQL]
+Essa questão é ainda complementada com a impossibilidade de incluir *constrains* no formato em que é construído o banco de dados no Big Query. Com isso, o banco pode acabar permitindo dados que violam sua característica desejada. No entanto, ao determinarmos o *datatype* de cada coluna, essa questão pode ser em parte minimizada.
 
-Para uma avaliação mais abrangente, foram ainda realizadas algumas consultas buscando verificar a qualidade das entradas, segundo os formatos esperados para os dados. Abaixo estão indicadas as queries SQL utilizadas nessa análise:
+Outro ponto importante em relação à qualidade, está também relacionado à impossibilidade de estabelecer relacionamentos diretos entre as tabelas, por meio de chaves primárias ou estrangeiras. No caso trabalhado, um exemplo que peca contra a qualidade dos dados nesse sentido é a definição do id_linhas, presente na tabela de viagens_dia e na tabela linhas_onibus. Apesar da intenção na modelagem ter sido de um relacionamento (foreign key e primary key respectivamente), nas etapas de transformação os códigos foram gerados a partir do mesmo procedimento porém empregado em fontes diferentes. Dessa forma, torna-se mais difícil garantir a sua correspondência e evitar divergências na informação, podendo ser encontrados id's em uma tabela (em que preocupa mais os encontrados na tabela viagens_dia) sem equivalência de dados na outra, ou até mesmo com informações conflitantes. Essa questão foi avaliada por meio da seguinte query:
 
 ```SQL
-SELECT * FROM table
-
+WITH nulos AS (
+SELECT 
+  v.id_linha IS NULL AS linhas_v,
+  l.id_linha IS NULL AS linhas_l,
+FROM `data-science-puc.onibus_subisidio_rj.viagens_dia` AS v
+FULL OUTER JOIN `data-science-puc.onibus_subisidio_rj.linhas_onibus` AS l
+ON v.id_linha = l.id_linha
+)
+SELECT
+  "viagens_dia" AS nulos,
+  COUNT(*) AS id_sem_correspondencia
+FROM nulos
+WHERE nulos.linhas_v
+UNION ALL
+SELECT
+  "linhas_onibus" AS id_sem_correspondencia,
+  COUNT(*) AS id_sem_correspondencia
+FROM nulos
+WHERE nulos.linhas_l
 ```
+Com o resultados percebemos que há um problema de qualidade, uma vez que encontramos muitas códigos sem correspondência entre as duas tabelas:
+![resultado query correspondencia ids](prints\resultado_qualidade.png)
+
+Para garantir então a qualidade desses dados, seria necessário realizar uma etapa adicional no tratamento, garantindo a relação entre as fontes de dados ou utilizando a mesma fonte para a composição das duas tabelas.
+
+Apesar disso, pelo fato das perguntas iniciais não focarem nas linhas operadas, é possível ainda assim prosseguir com a análise inicialmente proposta no problema.
 
 ### RESPOSTAS ÀS QUESTÕES INICIAIS
 - Quantas viagens são feitas em média, em dias úteis, por cada empresa?
@@ -276,7 +299,7 @@ Além disso foram encontradas algumas limitações na ferramenta utilizada para 
 
 É necessário ainda destacar que, não foi possível garantir agumas das condições de integridades dos dados utilizando o Big Query como nuvem para o armazenamento. Assim, apesar da modelagem ter previsto restrições, chaves e outras condicionantes, não haviam ferramentas para que elas fizessem parte do banco de dados final. Com isso, uma possível ingestão de dados futura no banco estabelecido, poderia permitir eventuais problemas na qualidade dos dados do banco. Nesse ponto, também avaliou-se que para a utilização desse tipo de nuvem, seria talvez mais adequado um esquema em tabela única, por ser um banco que utiliza o sistema colunar, em que não impactaria tanto uma grande quantidade de atributos ainda que a tabela tivesse muitos dados.
 
-É também importante mencionar a questão das limitações de custos financeiros implicadas no uso da nuvem. Os custos para a utilização das ferramentas é bastante alto e a fração disponibilizada gratuitamente restringe enormemente as suas possibilidades de uso, inclusive a exploração das melhores soluções disponíveis, como por exemplo as ferramentas de auxílio à governança de dados. Ainda assim, foi possível executar o trabalho com custos relativamente baixos, porém fazendo restrições à quantidade de dados para tal.
+É também importante mencionar a questão das limitações de custos financeiros implicadas no uso da nuvem. Os custos para a utilização das ferramentas é bastante alto e a fração disponibilizada gratuitamente restringe enormemente as suas possibilidades de uso, inclusive a exploração das melhores soluções disponíveis, como por exemplo as ferramentas de auxílio à governança de dados. Ainda assim, foi possível executar o trabalho e responder ès perguntas iniciais com custos relativamente baixos, porém fazendo restrições à quantidade de dados para tal.
 
 ### Perspectivas para trabalhos futuros
 Uma vez compreedidas todas as etapas do processo, podemos então ver pontos de melhoria para outros trabalhos. Considerando a temática específica do sistema de ônibus, caberia primeiramente buscar outras fontes confiáveis para estabelecer a relação entre o identificador das empresas utilizadas na base da prefeitura e os respectivos nomes, para que assim fosse possível ter respostas mais precisas e completas sobre o problema apresentado. Além disso, a tabela referente à dimensão tempo (tabela dia) ajudou pouco na solução dos problemas, uma vez que em SQL é possível realizar operações em cima de datas. Assim, consideraria que a inculsão dos dados da mesma em na tabela fato poderia tornar o esquema mais simples e não implicaria necessariamente em maior custo computacional. 
